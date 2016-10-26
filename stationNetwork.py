@@ -7,82 +7,144 @@ import pandas as pd
 from os import path
 import re
 
+class StationNetwork:
+    def __init__(self, option=0):
+        self.train_station_timestamp, self.train_date, self.train_numeric, self.date_cols = self.which_ide()
+        if option == 1:
+            self.adj = self.define_adj(self.train_station_timestamp, self.date_cols)
+            self.d, self.labels = self.create_list_of_pairs(self.date_cols[1:len(self.date_cols)])
+            self.Gr = self.drawGraph(self.adj, self.d, self.labels)
 
-# example from adjacency matrix
+    # This next piece of script is to visualise the network throughput data
 
-# Ad=np.array([[0,1,1,1,0,0,0,1], # Adjacency matrix
-#             [1,0,1,0,1,1,1,0],
-#             [1,1,0,0,0,0,1,1],
-#             [1,0,0,0,1,1,1,1],
-#             [0,1,0,1,0,1,1,0],
-#             [0,1,0,1,1,0,1,0],
-#             [0,1,1,1,1,1,0,1],
-#             [1,0,1,1,0,0,1,0]], dtype=float)
+    def create_file_reference(self, initial_dir, file_name):
+        s = path.join(initial_dir, file_name)
+        return s
 
-# Gr = nx.from_numpy_matrix(Ad)
+    def create_training_data(self, train_input_data_path, numeric_input_data_path):
+        data_init = pd.read_csv(train_input_data_path,
+                                nrows=10, dtype=float, usecols=list(range(0, 1157)))
+        date_cols = data_init.count().reset_index().sort_values(by=0, ascending=False)
+        # Initial string of the cols: e.g. L1_S32_F2343 i.e. the vector will be 'split' into 3 with i = 0,1,2
+        date_cols['Station'] = date_cols['index'].apply(lambda x: x.split('_')[1] if x != 'Id' else x)
+        date_cols = date_cols.drop_duplicates('Station', keep='first')['index'].tolist()
+        train_date = pd.read_csv(train_input_data_path, usecols=date_cols, nrows=100000)
+        train_numeric = pd.read_csv(numeric_input_data_path, nrows=100000)
+        return train_date, train_numeric, date_cols
 
-# nx.draw(Gr, node_color='g',with_labels =True, alpha = 0.5)
+    # we want to get the data into the format of
+    # ID time station
+    def times_by_station(self, data, cols):
+        times = pd.DataFrame(columns=['Id', 'times', 'station'])
+        # every dictionary has a key value pair therefore for each key value pair we want to update the value
+        for c in range(1,len(cols)):
+            x = np.array([cols[c].split('_')[1]])
+            d = {'Id': data.iloc[:, 0], 'times': data.loc[:,cols[c]], 'station': np.repeat(x, len(data.loc[:, cols[c]]))}
+            p1 = pd.DataFrame(d)
+            times = times.append(p1, ignore_index=True)
+        return times
 
-# another example
+    def create_sorted_station_times(self, train_date, date_cols):
+        train_station_times = self.times_by_station(train_date, date_cols).dropna().sort_values(by=['Id', 'times'],
+                                                                                           ascending=[1, 1])
+        return train_station_times
 
-# G2 = nx.Graph() #G is an empty graph
-# Nodes=range(51)
-# G2.add_nodes_from(Nodes)
-# Edges=[(0,1),(1,2),(1,3)]
-# G2.add_edges_from(Edges)
-# nx.draw(G2, node_color='c',edge_color='k', with_labels=True)
+    # create a numpy array [matrix] to hold the values that will become the adjacency matrix
+    # The coordinates will be the S29-230 split using the following syntax
+    # re.split(r'(\d+)',train_station_times.loc[0]['station'])
 
-# This next piece of script is to visualise the network throughput data
+    # Id station times station_next validation_id
+    # 4    S1    82.24     S2          4
 
-def create_file_reference(initial_dir, file_name):
-    s = path.join(initial_dir, file_name)
-    return s
+    # use the shift function (df['col_name'].shift(i) i in -R -> +R) to do this
+    def split_stations_into_numeric(self, train_station_ordered_pandas):
+        v = train_station_ordered_pandas['station'].apply(lambda s: re.split(r'(\d+)', s)[1])
+        train_station_ordered_pandas['numeric_station_from'] = v
+        u = train_station_ordered_pandas['numeric_station_from'].shift(-1)
+        train_station_ordered_pandas['numeric_station_to'] = u
+        w = train_station_ordered_pandas['Id'].shift(-1)
+        train_station_ordered_pandas['ref_id'] = w
+        return train_station_ordered_pandas
 
-def create_training_data(train_input_data_path, numeric_input_data_path):
-    data_init = pd.read_csv(train_input_data_path,
-                            nrows=10, dtype=float, usecols=list(range(0, 1157)))
-    date_cols = data_init.count().reset_index().sort_values(by=0, ascending=False)
-    date_cols['Station'] = date_cols['index'].apply(lambda x: x.split('_')[1] if x != 'Id' else x)
-    date_cols = date_cols.drop_duplicates('Station', keep='first')['index'].tolist()
-    train_date = pd.read_csv(train_input_data_path, usecols=date_cols, nrows=100000)
-    train_numeric = pd.read_csv(numeric_input_data_path, nrows=100)
-    return train_date, train_numeric, date_cols
+    #script so i don't have to keep sending to interactive
 
-# we want to get the data into the format of
-# ID time station
-def times_by_station(data, cols):
-    times = pd.DataFrame(columns=['Id', 'times', 'station'])
-    # every dictionary has a key value pair therefore for each key value pair we want to update the value
-    for c in range(1,len(cols)):
-        x = np.array([cols[c].split('_')[1]])
-        d = {'Id': data.iloc[:, 0], 'times': data.loc[:,cols[c]], 'station': np.repeat(x, len(data.loc[:, cols[c]]))}
-        p1 = pd.DataFrame(d)
-        times = times.append(p1, ignore_index=True)
-    return times
+    def which_ide(self, vs=False):
+        if vs:
+            # do some visual studio stuff here
+            return 'visual studio mode'
+        else:
+            # do some pycharm stuff here
+            initial_directory = '~/PycharmProjects/BoschDataScience'
+            train_date_path = self.create_file_reference(initial_directory, 'train_date.csv')
+            train_numeric_path = self.create_file_reference(initial_directory, 'train_numeric.csv')
+            train_date, train_numeric, date_cols = self.create_training_data(train_date_path, train_numeric_path)
+            train_station_timestamp = self.create_sorted_station_times(train_date, date_cols)
+            train_station_timestamp = self.split_stations_into_numeric(train_station_timestamp)
+            # need to adjust the shifted ids here
 
-def create_sorted_station_times(train_date, date_cols):
-    train_station_times = times_by_station(train_date, date_cols).dropna().sort_values(by=['Id', 'times'],
-                                                                                       ascending=[1, 1])
-    return train_station_times
+            return train_station_timestamp, train_date, train_numeric, date_cols
 
-# create a numpy array [matrix] to hold the values that will become the adjacency matrix
-# The coordinates will be the S29-230 split using the following syntax
-# re.split(r'(\d+)',train_station_times.loc[0]['station'])
+    # We can now create a weighted adjacency matrix which contains the necessary data to visualise our graph
 
-# even if we do this step though we are still going to have a problem. because the data set is so large we need an
-# efficient way of selecting indices. Basically we need to get the table into the format of i,j index of the adjacency
-# matrix.
+    def define_adj(self, data, cols):
+        l = len(cols) - 1
+        A = np.repeat(0, l**2).reshape(l, l)
+        # we are just entering the counts of the edges which are technically just groups of from to values
+        data_count = data.groupby(['numeric_station_from', 'numeric_station_to']).count()
+        # Time to loop over this should be fairly good
+        for i, r in data_count.iterrows():
+            A[int(i[0])][int(i[1])] = r['Id']
+        return A
 
-# Id station times station_next validation_id
-# 4    S1    82.24     S2          4
+    # Now that the data is aligned in the format that we need it to be in we need to determine which values end up in
+    # failure
 
-# In this way we can get the appropriate results. We included the validation_id because we need a nice little tag
-# to tell us if we are still on the same product or not we know this is either going to be the minimum time or the 
-# maximum time and therefore we can adjust the values accordingly
+    def drawGraph(self, Adjacency, pos, labels):
+        Gr = nx.from_numpy_matrix(Adjacency)
+        plt.figure(figsize=(22, 8))
+        nx.draw_networkx_nodes(Gr, pos, node_size=500)
+        eVeryLarge = [(u, v) for (u, v, d) in Gr.edges(data=True) if d['weight'] > 50000]
+        eLarge = [(u, v) for (u, v, d) in Gr.edges(data=True) if d['weight'] > 1000]
+        eLess = [(u, v) for (u, v, d) in Gr.edges(data=True) if d['weight'] < 1000]
+        nx.draw_networkx_edges(Gr, pos, edgelist=eLarge, width=2, edge_color='b')
+        nx.draw_networkx_edges(Gr, pos, edgelist=eLess, width=2, style='dashed')
+        nx.draw_networkx_edges(Gr, pos, edgelist=eVeryLarge, width=5, edge_color='r')
+        nx.draw_networkx_labels(Gr, pos, labels=labels)
+        return Gr
 
-# The appropriate python function to get all of this in order:
-# use the shift function df['col_name'].shift(i) i in -R -> +R
-def split_stations_into_numeric(train_station_ordered_pandas):
-    v = train_station_ordered_pandas['station'].apply(lambda s: re.split(r'(\d+)', s)[1])
-    train_station_ordered_pandas['numeric_station_from'] = v
-    return train_station_ordered_pandas
+    def create_list_of_pairs(self, machine_feats):
+        labels = {}
+        for i in range(0, len(machine_feats)):
+            labels[i] = 'S' + str(i)
+
+        y = [0, 1, 2, 3, 3, 4, 4, 5, 5, 6, 7, 7, 7, 1, 2, 3, 3, 4, 4, 5, 5, 6, 7, 7, 7, 6, 6,
+             7, 7, 7, 8, 9, 10, 10, 10, 11, 11, 12, 13, 14, 8, 9, 10, 11, 11, 12, 13, 14, 15, 15, 16, 17, 17]
+
+        x = [5, 9, 9, 10, 8, 10, 8, 10, 8, 7, 10, 9, 8, 5, 5, 6, 4, 6, 4, 6, 4, 5, 6, 5, 4, 2, 0, 2,
+             1, 0, 7, 7, 8, 7, 6, 8, 6, 7, 7, 7, 3, 3, 3, 4, 2, 3, 3, 3, 4, 2, 3, 7, 3]
+
+        d = {}
+        for i in range(0,len(x)):
+            d[i] = (y[i], x[i])
+        return d, labels
+
+
+class CreateLanlGraph:
+
+    # In this class we want to represent the machine sequences that end in response = 1, i.e. this will be the numerical
+    # data with id's
+    def __init__(self, data):
+        self.InputData = data
+        self.filter_response_failure()
+
+    def filter_response_failure(self):
+        self.Failures = pd.DataFrame(columns=['Id', 'Response'])
+        # With numerical training data input lets have a look at the sequences with repsonse 1
+        df = self.InputData
+        self.test = df.loc[lambda df: df.Response == 1, ['Id', 'Response']]
+
+
+
+
+
+
