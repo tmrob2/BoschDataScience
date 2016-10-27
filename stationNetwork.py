@@ -10,10 +10,11 @@ import re
 class StationNetwork:
     def __init__(self, option=0):
         self.train_station_timestamp, self.train_date, self.train_numeric, self.date_cols = self.which_ide()
+        self.train_station_timestamp = self.adjust_timestamp_df()
         if option == 1:
             self.adj = self.define_adj(self.train_station_timestamp, self.date_cols)
-            self.d, self.labels = self.create_list_of_pairs(self.date_cols[1:len(self.date_cols)])
-            self.Gr = self.drawGraph(self.adj, self.d, self.labels)
+            self.d, self.labels, self.coords_x, self.coords_y= self.create_list_of_pairs(self.date_cols[1:len(self.date_cols)])
+            #self.Gr = self.drawGraph(self.adj, self.d, self.labels)
 
     # This next piece of script is to visualise the network throughput data
 
@@ -80,20 +81,44 @@ class StationNetwork:
             train_date, train_numeric, date_cols = self.create_training_data(train_date_path, train_numeric_path)
             train_station_timestamp = self.create_sorted_station_times(train_date, date_cols)
             train_station_timestamp = self.split_stations_into_numeric(train_station_timestamp)
-            # need to adjust the shifted ids here
+            # need to adjust the shifted station times to match the correct id
+            train_station_timestamp['numeric_station_to'] = \
+                train_station_timestamp[['Id', 'ref_id', 'numeric_station_from', 'numeric_station_to']].apply(
+                lambda x: x[2] if x[0] != x[1] else x[3], axis=1)
 
             return train_station_timestamp, train_date, train_numeric, date_cols
 
     # We can now create a weighted adjacency matrix which contains the necessary data to visualise our graph
+    def adjust_timestamp_df(self):
+        df = self.train_station_timestamp
+        df2 = self.train_numeric
+        a = df[lambda df: df.numeric_station_from == df.numeric_station_to].index.values
+        for i in range(0, len(a)):
+            id = df.get_value(a[i], 'Id')
+            response = (df2.loc[df2.Id == id]['Response']).values[0]
+            if response == 1:
+                df.set_value(a[i], 'numeric_station_to', -99)
+            else:
+                df.set_value(a[i], 'numeric_station_to', 99)
+        return df
 
-    def define_adj(self, data, cols):
-        l = len(cols) - 1
+    def define_adj(self, data, cols, response_fail=False):
+        l = len(cols) - 1 + 2 #This may seem silly but it lets us keep track of the fact that we
+        # have id and response to consider i.e. r in {0,1}
         A = np.repeat(0, l**2).reshape(l, l)
         # we are just entering the counts of the edges which are technically just groups of from to values
-        data_count = data.groupby(['numeric_station_from', 'numeric_station_to']).count()
+        if response_fail==False:
+            data_count = data.groupby(['numeric_station_from', 'numeric_station_to']).count()
+        else:
+            data_count = data.isin
         # Time to loop over this should be fairly good
         for i, r in data_count.iterrows():
-            A[int(i[0])][int(i[1])] = r['Id']
+            if i[1] == -99:
+                A[int(i[0])][52] = r['Id']
+            elif i[1] == 99:
+                A[int(i[0])][53] = r['Id']
+            else:
+                A[int(i[0])][int(i[1])] = r['Id']
         return A
 
     # Now that the data is aligned in the format that we need it to be in we need to determine which values end up in
@@ -117,16 +142,21 @@ class StationNetwork:
         for i in range(0, len(machine_feats)):
             labels[i] = 'S' + str(i)
 
-        y = [0, 1, 2, 3, 3, 4, 4, 5, 5, 6, 7, 7, 7, 1, 2, 3, 3, 4, 4, 5, 5, 6, 7, 7, 7, 6, 6,
-             7, 7, 7, 8, 9, 10, 10, 10, 11, 11, 12, 13, 14, 8, 9, 10, 11, 11, 12, 13, 14, 15, 15, 16, 17, 17]
+        labels[53] = 'R_0'
+        labels[52] = 'R_1'
 
-        x = [5, 9, 9, 10, 8, 10, 8, 10, 8, 7, 10, 9, 8, 5, 5, 6, 4, 6, 4, 6, 4, 5, 6, 5, 4, 2, 0, 2,
-             1, 0, 7, 7, 8, 7, 6, 8, 6, 7, 7, 7, 3, 3, 3, 4, 2, 3, 3, 3, 4, 2, 3, 7, 3]
+        y = [0, 1, 2, 3, 3, 4, 4, 5, 5, 6, 7, 7, 7, 1, 2, 3, 3, 4, 4, 5, 5, 6, 7, 7, 7, 6, 6,
+             7, 7, 7, 8, 9, 10, 10, 10, 11, 11, 12, 13, 14, 8, 9, 10, 11, 11, 12, 13, 14, 15, 15, 16, 17, 17, 18]
+
+        x = [5, 9, 9, 10, 8, 10, 8, 10, 8, 7, 10, 9, 8, 5, 5, 6, 4, 6, 4, 6, 4, 5, 6, 5, 4, 2,
+             0, 2, 1, 0, 7, 7, 8, 7, 6, 8, 6, 7, 7, 7, 3, 3, 3, 4, 2, 3, 3, 3, 4, 2, 3, 7, 3, 7]
 
         d = {}
         for i in range(0,len(x)):
             d[i] = (y[i], x[i])
-        return d, labels
+        return d, labels, x, y
+
+
 
 
 class CreateLanlGraph:
