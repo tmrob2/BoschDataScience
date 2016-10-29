@@ -8,15 +8,23 @@ from os import path
 import re
 
 class StationNetwork:
-    def __init__(self, option=0):
-        self.train_station_timestamp, self.train_date, self.train_numeric, self.date_cols = self.which_ide()
-        self.train_station_timestamp = self.adjust_timestamp_df()
-        if option == 1:
-            self.adj = self.define_adj(self.train_station_timestamp, self.date_cols)
-            self.d, self.labels, self.coords_x, self.coords_y= self.create_list_of_pairs(self.date_cols[1:len(self.date_cols)])
-            #self.Gr = self.drawGraph(self.adj, self.d, self.labels)
+    """This class is used to visualise the station network contained as a sequence of dates in the data 
+       on class initialisation the class will take:
+        - option: 0 Represents constructing data but not the graph, 1 represents constructing the data and the supporting graph and adjacency matrix
+        - ide: {'vs', 'pc'}. 'vs' represents visual studio, 'pc' represents pycharm 
+    """
 
-    # This next piece of script is to visualise the network throughput data
+    def __init__(self, ide_option, option=0):
+        """ On initialisation of the class, all of the data will be constructed. If option 1 has been selected then the graph will be created as well"""
+        if ide_option in ['vs','pc']: 
+            self.train_station_timestamp, self.train_date, self.train_numeric, self.date_cols = self.which_ide(ide_option)
+            self.train_station_timestamp = self.adjust_timestamp_df()
+            if option == 1:
+                self.adj = self.define_adj(self.train_station_timestamp, self.date_cols)
+                self.d, self.labels, self.coords_x, self.coords_y= self.create_list_of_pairs(self.date_cols[1:len(self.date_cols)])
+                self.Gr = self.drawGraph(self.adj, self.d, self.labels)
+        else:
+            print('Ide option does not exist, see help(class_name) for more information on input args')
 
     def create_file_reference(self, initial_dir, file_name):
         s = path.join(initial_dir, file_name)
@@ -69,24 +77,25 @@ class StationNetwork:
 
     #script so i don't have to keep sending to interactive
 
-    def which_ide(self, vs=False):
-        if vs:
+    def which_ide(self, ide):
+        if ide=='vs':
             # do some visual studio stuff here
-            return 'visual studio mode'
-        else:
+            initial_directory = "C:/Users/Thomas/Documents/Kaggle/Bosch"
+        elif ide=='pc':
             # do some pycharm stuff here
             initial_directory = '~/PycharmProjects/BoschDataScience'
-            train_date_path = self.create_file_reference(initial_directory, 'train_date.csv')
-            train_numeric_path = self.create_file_reference(initial_directory, 'train_numeric.csv')
-            train_date, train_numeric, date_cols = self.create_training_data(train_date_path, train_numeric_path)
-            train_station_timestamp = self.create_sorted_station_times(train_date, date_cols)
-            train_station_timestamp = self.split_stations_into_numeric(train_station_timestamp)
-            # need to adjust the shifted station times to match the correct id
-            train_station_timestamp['numeric_station_to'] = \
-                train_station_timestamp[['Id', 'ref_id', 'numeric_station_from', 'numeric_station_to']].apply(
-                lambda x: x[2] if x[0] != x[1] else x[3], axis=1)
 
-            return train_station_timestamp, train_date, train_numeric, date_cols
+        train_date_path = self.create_file_reference(initial_directory, 'train_date.csv')
+        train_numeric_path = self.create_file_reference(initial_directory, 'train_numeric.csv')
+        train_date, train_numeric, date_cols = self.create_training_data(train_date_path, train_numeric_path)
+        train_station_timestamp = self.create_sorted_station_times(train_date, date_cols)
+        train_station_timestamp = self.split_stations_into_numeric(train_station_timestamp)
+        # need to adjust the shifted station times to match the correct id
+        train_station_timestamp['numeric_station_to'] = \
+            train_station_timestamp[['Id', 'ref_id', 'numeric_station_from', 'numeric_station_to']].apply(
+            lambda x: x[2] if x[0] != x[1] else x[3], axis=1)
+
+        return train_station_timestamp, train_date, train_numeric, date_cols
 
     # We can now create a weighted adjacency matrix which contains the necessary data to visualise our graph
     def adjust_timestamp_df(self):
@@ -135,6 +144,7 @@ class StationNetwork:
         nx.draw_networkx_edges(Gr, pos, edgelist=eLess, width=2, style='dashed')
         nx.draw_networkx_edges(Gr, pos, edgelist=eVeryLarge, width=5, edge_color='r')
         nx.draw_networkx_labels(Gr, pos, labels=labels)
+        plt.savefig('Station_Network.png')
         return Gr
 
     def create_list_of_pairs(self, machine_feats):
