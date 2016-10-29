@@ -41,9 +41,14 @@ class StationNetwork:
         train_numeric = pd.read_csv(numeric_input_data_path, nrows=100000)
         return train_date, train_numeric, date_cols
 
-    # we want to get the data into the format of
-    # ID time station
     def times_by_station(self, data, cols):
+        """The purpose of this method is to format the data into something that is usable.
+           Using the date_cols generated from the create_training_data we want data in the format
+           of Id, Time, Station in a pandas dataframe. To do this, imo creating a dictionary which references the
+           station name, time and id and then appending this to the end of the pandas array is the simplest approach. 
+
+           The returned object is a pandas dataframe
+        """
         times = pd.DataFrame(columns=['Id', 'times', 'station'])
         # every dictionary has a key value pair therefore for each key value pair we want to update the value
         for c in range(1,len(cols)):
